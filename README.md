@@ -1,4 +1,4 @@
-# Veyra
+# Veyra Discord Client
 
 **Enhanced Discord Experience**
 
