@@ -5,7 +5,7 @@
 A fork of [BetterDiscord](https://github.com/BetterDiscord/BetterDiscord) with a gold & navy visual identity and exclusive features for power users.
 
 <p align="center">
-  <img src="assets/veyra-logo.svg" alt="Veyra Logo" width="120" />
+  <img src="assets/Veyra_logo.png" alt="Veyra Logo" width="160" />
 </p>
 
 ---
@@ -34,7 +34,7 @@ Veyra is a client modification for Discord that lets you customize your experien
 | **Snippet Manager** | One-click CSS snippet library. 12+ pre-built tweaks (hide gift button, compact mode, gold links, enhanced code blocks, etc.) with instant toggles — no theme editing required. |
 | **Theme Profiles** | Automatically switch themes when you navigate to different servers or channels. Set a per-server or per-channel theme profile and Veyra handles the rest. |
 | **Performance Monitor** | Real-time FPS counter, memory usage graph, DOM node count, and uptime overlay. Draggable, always-on-top widget for diagnosing performance issues. |
-| **Veyra Color Scheme** | Default gold (#C4A265) and deep navy (#0F0F1A) theme inspired by [veyras.dev](https://veyras.dev). |
+| **Veyra Color Scheme** | Default gold (#C4A265) accents with dark greyscale backgrounds, inspired by [veyras.dev](https://veyras.dev). |
 
 ---
 
@@ -47,8 +47,8 @@ Veyra is a client modification for Discord that lets you customize your experien
 ### Quick Install
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/Veyra.git
-cd Veyra
+git clone https://github.com/diwany/veyra-dc.git
+cd veyra-dc
 
 # Install dependencies
 npm install
