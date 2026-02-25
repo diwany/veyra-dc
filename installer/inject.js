@@ -76,6 +76,27 @@ function getVeyraDataDir() {
     return dir;
 }
 
+function getPreloadCode() {
+    return `// Veyra Preload — Bridges Node.js filesystem to the renderer
+const { contextBridge, ipcRenderer } = require("electron");
+
+try {
+    contextBridge.exposeInMainWorld("VeyraNative", {
+        readdir: (dir) => ipcRenderer.invoke("veyra-readdir", dir),
+        readFile: (filePath) => ipcRenderer.invoke("veyra-read-file", filePath),
+        writeFile: (filePath, content) => ipcRenderer.invoke("veyra-write-file", filePath, content),
+        exists: (filePath) => ipcRenderer.invoke("veyra-exists", filePath),
+        deleteFile: (filePath) => ipcRenderer.invoke("veyra-delete-file", filePath),
+        openPath: (dirPath) => ipcRenderer.invoke("veyra-open-path", dirPath),
+        getPaths: () => ipcRenderer.invoke("veyra-get-paths"),
+        mkdir: (dirPath) => ipcRenderer.invoke("veyra-mkdir", dirPath),
+    });
+} catch(e) {
+    console.error("[Veyra] Preload bridge error:", e);
+}
+`;
+}
+
 // ── Injection ──
 
 function inject(resourcesDir) {
@@ -136,8 +157,12 @@ function inject(resourcesDir) {
     fs.writeFileSync(path.join(appDir, "package.json"), JSON.stringify(packageJson, null, 2), "utf8");
     console.log(`  ✓ Created app/package.json`);
 
+    // Write preload.js — bridges Node.js APIs to the renderer via IPC
+    const preloadCode = getPreloadCode();
+    fs.writeFileSync(path.join(appDir, "preload.js"), preloadCode, "utf8");
+    console.log(`  ✓ Created app/preload.js`);
+
     // Write index.js — the shim that loads original Discord + injects Veyra
-    const veyraPathEscaped = JSON.stringify(veyraTargetPath).slice(1, -1); // remove outer quotes for template
     const logoDataUri = logoBase64 ? "data:image/png;base64," + logoBase64 : "";
     const indexCode = `"use strict";
 
@@ -147,24 +172,24 @@ function inject(resourcesDir) {
 const path = require("path");
 const fs = require("fs");
 const electron = require("electron");
+const { ipcMain, shell, session } = electron;
 
 // Debug log to file
 const LOG_PATH = path.join(require("os").tmpdir(), "veyra-debug.log");
 function log(msg) {
-    const line = "[" + new Date().toISOString() + "] " + msg + "\\n";
+    const line = "[" + new Date().toTimeString().slice(0,8) + "] " + msg + "\\n";
     try { fs.appendFileSync(LOG_PATH, line); } catch(e) {}
-    console.log("[Veyra] " + msg);
 }
 
 log("=== Veyra shim loaded ===");
 
-// Path to Veyra bundle
+// Paths
 const VEYRA_PATH = ${JSON.stringify(veyraTargetPath)};
-
-// Veyra logo data URI for splash/boot screen replacement
+const VEYRA_DATA = ${JSON.stringify(veyraDataDir)};
+const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const VEYRA_LOGO = "${logoDataUri}";
 
-// Read Veyra code once at startup
+// Read Veyra bundle
 let veyraCode;
 try {
     veyraCode = fs.readFileSync(VEYRA_PATH, "utf8");
@@ -172,6 +197,53 @@ try {
 } catch (e) {
     log("ERROR: Failed to read veyra.js: " + e.message);
 }
+
+// Ensure data directories exist
+for (const sub of ["plugins", "themes", "data"]) {
+    const dir = path.join(VEYRA_DATA, sub);
+    try { fs.mkdirSync(dir, { recursive: true }); } catch(e) {}
+}
+
+// === IPC Handlers for renderer filesystem access ===
+ipcMain.handle("veyra-readdir", async (_, dirPath) => {
+    try { return fs.readdirSync(dirPath); } catch(e) { return []; }
+});
+ipcMain.handle("veyra-read-file", async (_, filePath) => {
+    try { return fs.readFileSync(filePath, "utf8"); } catch(e) { return null; }
+});
+ipcMain.handle("veyra-write-file", async (_, filePath, content) => {
+    try { fs.writeFileSync(filePath, content, "utf8"); return true; } catch(e) { return false; }
+});
+ipcMain.handle("veyra-exists", async (_, filePath) => {
+    return fs.existsSync(filePath);
+});
+ipcMain.handle("veyra-delete-file", async (_, filePath) => {
+    try { fs.unlinkSync(filePath); return true; } catch(e) { return false; }
+});
+ipcMain.handle("veyra-open-path", async (_, dirPath) => {
+    return shell.openPath(dirPath);
+});
+ipcMain.handle("veyra-get-paths", async () => {
+    return {
+        data: VEYRA_DATA,
+        plugins: path.join(VEYRA_DATA, "plugins"),
+        themes: path.join(VEYRA_DATA, "themes"),
+        customCSS: path.join(VEYRA_DATA, "data", "custom.css"),
+    };
+});
+ipcMain.handle("veyra-mkdir", async (_, dirPath) => {
+    try { fs.mkdirSync(dirPath, { recursive: true }); return true; } catch(e) { return false; }
+});
+
+// === Set session preloads (must run before Discord creates windows) ===
+electron.app.on("ready", () => {
+    try {
+        session.defaultSession.setPreloads([PRELOAD_PATH]);
+        log("Session preloads set");
+    } catch(e) {
+        log("ERROR setting preloads: " + e.message);
+    }
+});
 
 // Splash/boot logo replacement script (self-cleaning)
 const splashScript = '(function(){' +
@@ -202,7 +274,7 @@ const splashScript = '(function(){' +
     '}catch(e){}' +
     '})()';
 
-// Track injected windows to avoid double-injection
+// Track injected windows
 const injectedWindows = new Set();
 
 function injectIntoWindow(win) {
@@ -210,32 +282,24 @@ function injectIntoWindow(win) {
     const id = win.id;
     if (injectedWindows.has(id)) return;
     injectedWindows.add(id);
-    log("Setting up injection for window " + id);
 
     win.on("closed", () => injectedWindows.delete(id));
 
     const wc = win.webContents;
-
-    // Inject splash logo replacement as early as possible
     wc.on("dom-ready", () => {
         if (win.isDestroyed()) return;
-        log("dom-ready for window " + id);
+        log("dom-ready window " + id);
 
-        // Inject splash logo into all windows (self-cleans when app-mount loads)
-        wc.executeJavaScript(splashScript)
-            .then(() => log("Splash logo injected into window " + id))
-            .catch(e => log("Splash inject error: " + e.message));
+        wc.executeJavaScript(splashScript).catch(() => {});
 
-        // Then inject main Veyra bundle
         if (veyraCode) {
             wc.executeJavaScript(veyraCode)
                 .then(() => log("Veyra injected into window " + id))
-                .catch(e => log("Injection error window " + id + ": " + e.message));
+                .catch(e => log("Injection error: " + e.message));
         }
     });
 }
 
-// Listen for new browser windows
 electron.app.on("browser-window-created", (_, win) => {
     log("browser-window-created: " + win.id);
     injectIntoWindow(win);

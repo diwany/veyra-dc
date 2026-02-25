@@ -20,6 +20,9 @@ const ThemeManager = {
         // Load built-in theme
         this._loadVeyraTheme();
 
+        // Load themes from disk
+        await this._loadThemesFromDisk();
+
         // Auto-enable previously enabled themes
         for (const name of this._enabled) {
             if (this._themes.has(name)) {
@@ -41,6 +44,42 @@ const ThemeManager = {
             author: "Veyra Team",
             css: this._getVeyraThemeCSS()
         });
+    },
+
+    /**
+     * Scan the themes directory and load all .theme.css / .css files
+     */
+    async _loadThemesFromDisk() {
+        if (!window.VeyraNative) {
+            Logger.log("ThemeManager", "VeyraNative not available — skipping disk loading");
+            return;
+        }
+
+        try {
+            const paths = await window.VeyraNative.getPaths();
+            const themesDir = paths.themes;
+
+            await window.VeyraNative.mkdir(themesDir);
+
+            const files = await window.VeyraNative.readdir(themesDir);
+            const themeFiles = files.filter(f => f.endsWith(".theme.css") || f.endsWith(".css"));
+
+            for (const file of themeFiles) {
+                try {
+                    const sep = themesDir.includes("/") ? "/" : "\\";
+                    const filePath = themesDir + sep + file;
+                    const css = await window.VeyraNative.readFile(filePath);
+                    if (!css) continue;
+
+                    const name = this.loadFromFile(css);
+                    Logger.log("ThemeManager", `Loaded from disk: ${name} (${file})`);
+                } catch (e) {
+                    Logger.error("ThemeManager", `Failed to load ${file}: ${e.message}`);
+                }
+            }
+        } catch (e) {
+            Logger.error("ThemeManager", `Failed to scan themes directory: ${e.message}`);
+        }
     },
 
     _getVeyraThemeCSS() {

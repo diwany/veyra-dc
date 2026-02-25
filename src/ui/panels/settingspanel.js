@@ -185,16 +185,10 @@ const SettingsPanel = {
         const openFolderBtn = document.createElement("button");
         openFolderBtn.className = "veyra-btn veyra-btn-primary";
         openFolderBtn.textContent = "Open Plugins Folder";
-        openFolderBtn.addEventListener("click", () => {
-            // Open plugins folder
-            if (window.require) {
-                const { shell } = window.require("electron");
-                const path = window.require("path");
-                const dir = path.join(
-                    process.env.APPDATA || process.env.HOME,
-                    Config.paths.plugins
-                );
-                shell.openPath(dir);
+        openFolderBtn.addEventListener("click", async () => {
+            if (window.VeyraNative) {
+                const paths = await window.VeyraNative.getPaths();
+                window.VeyraNative.openPath(paths.plugins);
             }
         });
 
@@ -256,15 +250,10 @@ const SettingsPanel = {
         const openFolderBtn = document.createElement("button");
         openFolderBtn.className = "veyra-btn veyra-btn-primary";
         openFolderBtn.textContent = "Open Themes Folder";
-        openFolderBtn.addEventListener("click", () => {
-            if (window.require) {
-                const { shell } = window.require("electron");
-                const path = window.require("path");
-                const dir = path.join(
-                    process.env.APPDATA || process.env.HOME,
-                    Config.paths.themes
-                );
-                shell.openPath(dir);
+        openFolderBtn.addEventListener("click", async () => {
+            if (window.VeyraNative) {
+                const paths = await window.VeyraNative.getPaths();
+                window.VeyraNative.openPath(paths.themes);
             }
         });
 
