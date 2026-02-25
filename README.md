@@ -1,4 +1,4 @@
-# Veyra Discord Client
+# Veyra Discord Client BETA
 
 **Enhanced Discord Experience**
 
